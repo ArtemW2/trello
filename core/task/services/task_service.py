@@ -52,8 +52,6 @@ class TaskService:
 
         return data
     
-
-
     """
     Если изменяется только департамент, то очищаем список исполнителей
     Если департамент остаётся прежним, а исполнители добавляются, то добавляем их в список текущих исполнителей
@@ -79,7 +77,6 @@ class TaskService:
 
         return validated_data
     
-
     """
     Даже если в запросе при создании задачи будут переданы исполнители, департамент или приоритет, данные будут выкинуты из запроса 
     """
@@ -92,8 +89,15 @@ class TaskService:
         priority = data.pop("priority", None)
 
         return data
+    
+    @staticmethod
+    def destroy_permission(user, instance):
+        if user != instance.author:
+            raise ValidationError("Вы не можете удалить задачу")
         
-
+        return True
+        
+        
 class TaskHistoryService:
     """
     Техническая поддержка видит все действия по всем задачам, остальные только по тем, в каких участвуют

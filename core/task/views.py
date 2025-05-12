@@ -1,27 +1,27 @@
+from django.core.exceptions import ValidationError
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.permissions import IsAuthenticated
 
-from task.models import Task, File, TaskHistory
+from task.tasks import upload_task_files_to_google_drive
 from task.permissions import TaskPermission, IsOwnerFilePermission
 from task.serializers import TaskSerializer, FileSerializer, TaskHistorySerializer
-from task.tasks import upload_task_files_to_google_drive
 
-from task.services.task_service import TaskService, TaskHistoryService
 from task.services.file_service import FileService
 from task.services.upload_file_service import UploadFileService
+from task.services.task_service import TaskService, TaskHistoryService
 
 import logging
 
-from task.utils import set_current_user
+from core.user_middleware import set_current_user
 
 logger = logging.getLogger(__name__)
 
-# Create your views here.
+
 class TaskViewSet(ModelViewSet):
-    queryset = Task.objects.all()
     serializer_class = TaskSerializer
     permission_classes = (IsAuthenticated, TaskPermission)
 
@@ -40,6 +40,15 @@ class TaskViewSet(ModelViewSet):
         logger.info(f"Пользователь {self.request.user} создал задачу №{task_id} - '{task_title}'")
         return response
     
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            TaskService.destroy_permission(self.request.user, instance)
+        except ValidationError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_403_FORBIDDEN)
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+        
     @action(methods=["POST"], detail=True)
     def upload_files(self, request, pk=None):
         task = self.get_object()
@@ -58,7 +67,6 @@ class TaskViewSet(ModelViewSet):
     
     
 class FileViewSet(ModelViewSet):
-    queryset = File.objects.all()
     serializer_class = FileSerializer
     permission_classes = (IsAuthenticated, IsOwnerFilePermission)
     
@@ -67,7 +75,6 @@ class FileViewSet(ModelViewSet):
     
 
 class TaskHistoryViewSet(ModelViewSet):
-    queryset = TaskHistory.objects.all()
     serializer_class = TaskHistorySerializer
     permission_classes = (IsAuthenticated,)
     http_method_names = ['get']

@@ -1,3 +1,5 @@
+from model_utils import FieldTracker
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.core.validators import EmailValidator, MinLengthValidator
@@ -30,17 +32,16 @@ class EmployeeManager(BaseUserManager):
 
 class DepartmentChoices(Enum):
     SALES = 'Отдел продаж'
-    CUSTOMER_SUPPORT = 'Отдел поддержки клиентов'
     DEVELOPMENT = 'Отдел разработки'
-    MARKETING = 'Отдел маркетинга'
+    # MARKETING = 'Отдел маркетинга'
     HR = 'Отдел кадров'
-    FINANCE = 'Финансовый отдел'
-    LEGAL = 'Юридический отдел'
-    IT = 'IT-отдел'
-    LOGISTICS = 'Отдел логистики'
-    ADMINISTRATION = 'Административный отдел'
+    # FINANCE = 'Финансовый отдел'
+    # LEGAL = 'Юридический отдел'
+    # LOGISTICS = 'Отдел логистики'
+    ADMINISTRATION = 'Отдел системного администрирования'
     SUPPORT = 'Отдел технической поддержки'
     TESTING = "Отдел тестирования"
+    SECURITY = 'Отдел безопасности'
 
 
 class Department(models.Model):
@@ -48,7 +49,7 @@ class Department(models.Model):
     department_id = models.CharField(max_length = 6, validators = [MinLengthValidator(6)], unique = True, default = GenerateIDService.generate_unique_department_id, verbose_name = 'Идентификатор департамента')
 
     def __str__(self):
-        return f"{self.department_id} - {self.name}"
+        return f"{self.name}"
 
 
 class StatusChoices(Enum):
@@ -58,11 +59,17 @@ class StatusChoices(Enum):
 
 
 class RoleChoices(Enum):
-    manager = 'Менеджер'
+    manager = 'Руководитель департамента'
+    assistant_manager = 'Заместитель руководителя'
+    support = "Сотрудник технической поддержки"
     developer = 'Разработчик'
     tester = 'Тестировщик'
-    intern = 'Стажёр'
+    customer_manager = 'Менеджер по работе с клиентами'
+    recruter = 'Рекрутер'
+    admin = 'Системный администратор'
+    security_guard = "Сотрудник службы безопасности"
     
+
 
 class Employee(AbstractBaseUser):
     login = models.CharField(max_length = 100, db_index = True, unique = True, verbose_name = "Логин сотрудника")
@@ -73,11 +80,12 @@ class Employee(AbstractBaseUser):
     date_of_birth = models.DateField(null = True, blank = True, verbose_name = 'Дата рождения')
     email = models.EmailField(max_length = 100, db_index = True, blank = True, validators = [EmailValidator], verbose_name = 'Электронная почта')
     department = models.ForeignKey(Department, on_delete = models.SET_NULL, null = True, verbose_name = 'Департамент сотрудника', related_name = 'department_employees')
-    role = models.CharField(max_length = 100, blank = True, choices = [(choice.value, choice.value) for choice in RoleChoices], verbose_name = 'Роль сотрудника', default = RoleChoices.developer.value)
+    role = models.CharField(max_length = 100, null = True, blank = True, choices = [(choice.value, choice.value) for choice in RoleChoices], verbose_name = 'Роль сотрудника', default = "")
     status = models.CharField(max_length = 50, blank = True, choices = [(choice.value, choice.value) for choice in StatusChoices], verbose_name = 'Статус сотрудника', default = StatusChoices.active.value)
     hire_date= models.DateField(auto_now_add = True, verbose_name = 'Дата приема на работу')
     is_staff = models.BooleanField(default=False, verbose_name='Доступ в админку')
     termination_date = models.DateField(null = True, blank = True, verbose_name = 'Дата увольнения')
+    tracker = FieldTracker(fields=['department', 'status', 'termination_date'])
 
     USERNAME_FIELD = 'login'
     REQUIRED_FIELDS = ['first_name', 'last_name', 'surname']
@@ -95,8 +103,8 @@ class Employee(AbstractBaseUser):
     
 
 class ManagerDepartment(models.Model):
-    manager = models.ForeignKey(Employee, on_delete = models.CASCADE, verbose_name = 'Руководитель', related_name = 'manager_department')
-    assistant_manager = models.ForeignKey(Employee, on_delete = models.CASCADE, verbose_name = 'Заместитель руководителя', null = True, blank = True, related_name = 'manager_department_assistant')
+    manager = models.ForeignKey(Employee, default = "", on_delete = models.SET_DEFAULT, null = True, blank = True, verbose_name = 'Руководитель', related_name = 'manager_department')
+    assistant_manager = models.ForeignKey(Employee, default = "", on_delete = models.SET_DEFAULT, verbose_name = 'Заместитель руководителя', null = True, blank = True, related_name = 'manager_department_assistant')
     department = models.ForeignKey(Department, on_delete = models.CASCADE, verbose_name = 'Департамент')
     assigned_at = models.DateField(auto_now_add = True, verbose_name = 'Дата назначения')
 
@@ -107,6 +115,16 @@ class ManagerDepartment(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.department} - {self.manager}"
+        return f"{self.department}. Руководитель - {self.manager}, заместитель - {self.assistant_manager}"
     
     
+class EmployeeActionHistory(models.Model):
+    executor = models.ForeignKey(Employee, null=True, blank=True, on_delete=models.CASCADE, related_name="employee_actions")
+    user = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="actions_on_employee")
+    action = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    old_value = models.CharField(max_length=255)
+    new_value = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.action} для {self.user} выполнено работником {self.executor}, департамент {self.executor.department}. Уникальный ID работника - {self.executor_id}"

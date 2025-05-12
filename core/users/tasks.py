@@ -1,7 +1,8 @@
 from celery import shared_task
 
-from users.services.notification_service import NotificationManagerService
 from users.models import Employee
+from users.services.notification_service import NotificationManagerService
+
 import logging
 
 logger = logging.getLogger(__name__)

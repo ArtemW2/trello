@@ -1,6 +1,4 @@
 from django.urls import reverse
-from django.test import TestCase
-
 from unittest.mock import patch
 
 from rest_framework.test import APITestCase
@@ -11,430 +9,321 @@ from users.models import *
 from users.services.auth_service import AuthService
 
 
-class EmployeeViewSetTests(APITestCase):
-    def setUp(self):
-        support_department = Department.objects.create(
-            name = "Отдел технической поддержки",
-        )
-        department = Department.objects.create(
-            name = "Отдел разработки",
-        )
-
-        self.employee = Employee.objects.create(
-            login = "default_user",
-            password = "strongpassword123",
-            first_name = "Разраб",
-            last_name = "Разраб",
-            surname = "Разраб",
-            email =  "ivan@example.com",
-            department = department,
-            role = "Разработчик",
-            status = "Работает"
-        )
-        self.support_employee = Employee.objects.create(
-            login =  "support_user",
-            password = "strongpassword123",
-            first_name = "Саппорт",
-            last_name = "Саппорт",
-            surname = "Саппорт",
-            email =  "ivan@example.com",
-            department = support_department,
-            role = "Саппорт",
-            status = "Работает"
-            )
-       
-        support_tokens = AuthService.generate_tokens(self.support_employee)
-        develop_tokens = AuthService.generate_tokens(self.employee)
-        self.access_develop_token = develop_tokens["access"]
-        self.access_support_token = support_tokens["access"]
-
-    def test_create_employee_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        data = {
-            'login': 'brbrbr',
-            'first_name': 'Петр',
-            'password': "1234",
-            'last_name': 'Петров',
-            'surname': 'Петрович',
-            'email': 'petr@example.com',
-            'department': self.support_employee.department.id,
-            "role": "Разработчик",
-            "status": "Работает"
-        }
-        url = reverse("employee-list")
-        response = self.client.post(url, data, format = 'json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-    #Изменить логику, самого себя удалять нельзя
-    def test_delete_yourself_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
-        url = reverse("employee-detail", args = [self.support_employee.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_delete_another_employee_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
-        url = reverse('employee-detail', args = [self.employee.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_get_list_employees_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
-        url = reverse("employee-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_update_personal_information_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
-        url = reverse("employee-detail", args=[self.support_employee.id])
-        data = {
-            "first_name": "Саппорт 1"
-        }
-        response = self.client.patch(url, data, format = "json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_update_personal_information_about_another_employee_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
-        url = reverse("employee-detail", args=[self.employee.id])
-        data = {
-            "first_name": "Разработчик 22"
-        }
-        self.employee.refresh_from_db()
-        print(self.employee.first_name)
-        response = self.client.patch(url, data, format = "json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)  
-
-    def test_create_employee_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        data = {
-            'login': 'brbrbr1',
-            'first_name': 'Петр',
-            'password': "1234",
-            'last_name': 'Петров',
-            'surname': 'Петрович',
-            'email': 'petr@example.com',
-            'department': self.support_employee.department.id,
-            "role": "Разработчик",
-            "status": "Работает"
-        }
-        url = reverse("employee-list")
-        response = self.client.post(url, data, format = 'json')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_delete_yourself_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        url = reverse("employee-detail", args = [self.employee.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_delete_another_employee_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        url = reverse("employee-detail", args = [self.support_employee.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-    
-    def test_get_list_employees_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        url = reverse("employee-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_update_personal_information_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        url = reverse("employee-detail", args=[self.employee.id])
-        data = {
-            "first_name": "Разработчик 1"
-        }
-        response = self.client.patch(url, data, format = "json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)  
-
-    def test_update_personal_information_about_another_employee_by_developer(self):
-
-        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_develop_token)
-        url = reverse("employee-detail", args=[self.support_employee.id])
-        data = {
-            "first_name": "Саппорт 22"
-        }
-        self.support_employee.refresh_from_db()
-        print(self.support_employee.first_name)
-        response = self.client.patch(url, data, format = "json")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)  
-
-
-class DepartmentViewSetTests(APITestCase):
+class BaseSetUp(APITestCase):
     def setUp(self):
         self.support_department = Department.objects.create(
-            name = "Отдел технической поддержки",
+            name="Отдел технической поддержки"
         )
-        self.department = Department.objects.create(
-            name = "Отдел разработки",
+        self.developer_department = Department.objects.create(
+            name="Отдел разработки"
         )
+        self.security_department = Department.objects.create(
+            name="Отдел безопасности"
+        )
+        self.hr_department = Department.objects.create(
+            name="Отдел кадров"
+        )
+        self.developer = Employee.objects.create(
+            login="developer_user",
+            password="strongpassword123",
+            first_name="Разраб",
+            last_name="Разраб",
+            surname="Разраб",
+            email="ivan@example.com",
+            department=self.developer_department,
+        )
+        self.second_developer = Employee.objects.create(
+            login="developer2_user",
+            password="strongpassword123",
+            first_name="Разраб2",
+            last_name="Разраб2",
+            surname="Разраб2",
+            email="ivan@example.com",
+            department=self.developer_department,
+        )
+        self.support = Employee.objects.create(
+            login="support_user",
+            password="strongpassword123",
+            first_name="Саппорт",
+            last_name="Саппорт",
+            surname="Саппорт",
+            email="ivan@example.com",
+            department=self.support_department,
+        )
+        self.second_support = Employee.objects.create(
+            login="support2_user",
+            password="strongpassword123",
+            first_name="Саппорт2",
+            last_name="Саппорт2",
+            surname="Саппорт2",
+            email="ivan@example.com",
+            department=self.support_department,
+        )
+        self.security = Employee.objects.create(
+            login="security_user",
+            password="strongpassword123",
+            first_name="СБ",
+            last_name="СБ",
+            surname="СБ",
+            email="ivan@example.com",
+            department=self.security_department,
+        )
+        self.hr = Employee.objects.create(
+            login="hr_user",
+            password="strongpassword123",
+            first_name="HR",
+            last_name="HR",
+            surname="HR",
+            email="ivan@example.com",
+            department=self.hr_department,
+        )
+        self.manager_support_department = ManagerDepartment.objects.create(
+            manager=self.support,
+            assistant_manager=self.second_support,
+            department=self.support_department
+        )
+        self.access_develop_token = AuthService.generate_tokens(self.developer)["access"]
+        self.access_second_develop_token = AuthService.generate_tokens(self.second_developer)["access"]
+        self.access_support_token = AuthService.generate_tokens(self.support)["access"]
+        self.access_second_support_token = AuthService.generate_tokens(self.second_support)["access"]
+        self.access_security_token = AuthService.generate_tokens(self.security)["access"]
+        self.access_hr_token = AuthService.generate_tokens(self.hr)["access"]
 
-        self.employee = Employee.objects.create(
-            login = "default_user",
-            password = "strongpassword123",
-            first_name = "Разраб",
-            last_name = "Разраб",
-            surname = "Разраб",
-            email =  "ivan@example.com",
-            department = self.department,
-            role = "Разработчик",
-            status = "Работает"
-        )
-        self.support_employee = Employee.objects.create(
-            login =  "support_user",
-            password = "strongpassword123",
-            first_name = "Саппорт",
-            last_name = "Саппорт",
-            surname = "Саппорт",
-            email =  "ivan@example.com",
-            department = self.support_department,
-            role = "Саппорт",
-            status = "Работает"
-            )
-       
-        support_tokens = AuthService.generate_tokens(self.support_employee)
-        develop_tokens = AuthService.generate_tokens(self.employee)
-        self.access_develop_token = develop_tokens["access"]
-        self.access_support_token = support_tokens["access"]
-    
-    def test_create_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
+
+class EmployeeViewSetTests(BaseSetUp):
+    "Сотрудники из департаментов Отдел технической поддержки, Отдел безопасности, Отдел HR имеют доступ ко всему списку"
+    def test_get_all_queryset_by_permitted_departments(self):
+        tokens = [self.access_support_token, self.access_security_token, self.access_hr_token]
+        url = reverse("employee-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.get(url)
+            data = response.json()
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(data), Employee.objects.count())
+
+    "Сотрудники других департаментов видят только сотрудников своего департамента"
+    def test_get_limited_queryset_by_other_departments(self):
+        url = reverse("employee-list")
+        self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {self.access_develop_token}" )
+        response = self.client.get(url)
+        data = response.json()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(data), Employee.objects.filter(department=self.developer_department).count())
+
+    def test_update_user_info_by_support_or_owner(self):
+        tokens = [self.access_support_token, self.access_develop_token]
+        url = reverse("employee-detail", args=[self.developer.id])
         data = {
-            "name": "Отдел продаж",
-
+            "login": "123"
         }
-        url = reverse("department-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.patch(url, data, format="json")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data["login"], "123")
+
+    def test_update_user_info_by_not_support_and_owner(self):
+        tokens = [self.access_security_token, self.access_hr_token]
+        url = reverse("employee-detail", args=[self.developer.id])
+        data = {
+            "login": "123"
+        }
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.patch(url, data)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_user_by_support(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
+        data = {
+            "login":"test",
+            "password":"strongpassword123",
+            "first_name":"СБ",
+            "last_name":"СБ",
+            "surname":"СБ",
+            "email":"test@mail.ru",
+            "department": self.security_department.id
+        }
+        url = reverse("employee-list")
         response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_user_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_security_token, self.access_hr_token]
+        data = {
+            "login":"test",
+            "password":"strongpassword123",
+            "first_name":"СБ",
+            "last_name":"СБ",
+            "surname":"СБ",
+            "email":"test@mail.ru",
+            "department": self.security_department.id
+        }
+        url = reverse("employee-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.post(url, data, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_delete_user_by_support(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
+        url = reverse("employee-detail", args=[self.support.id])
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_delete_user_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_security_token, self.access_hr_token]
+        url = reverse("employee-detail", args=[self.support.id])
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class DepartmentViewSetTests(BaseSetUp):
+
+    def test_get_queryset_departments(self):
+        tokens = [self.access_develop_token, self.access_hr_token, self.access_security_token, self.access_support_token]
+        url = reverse("department-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.get(url)
+            data = response.json()
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(data), Department.objects.count())
+
+    def test_update_department_info_by_support(self):
+        self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {self.access_support_token}")
+        url = reverse("department-detail", args=[self.support_department.id])
+        data = {
+            "name": "Отдел продаж"
+        }
+        response = self.client.patch(url, data, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+    def test_update_department_info_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_hr_token, self.access_security_token]
+        url = reverse("department-detail", args=[self.support_department.id])
+        data = {
+            "name": "Отдел продаж"
+        }
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.patch(url, data, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_delete_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("department-detail", args = [self.department.id])
-        response = self.client.delete(url)
+        self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {self.access_support_token}")
+        url = reverse("department-detail", args=[self.support_department.id])
+        response = self.client.delete(url, format="json")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
-    def test_get_list_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("department-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    def test_delete_department_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_hr_token, self.access_security_token]
+        url = reverse("department-detail", args=[self.support_department.id])
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.delete(url, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    #Статус 400 срабатывает из-за того что name не использует значение из списка DepartmentChoices, любое значение оттуда приведёт к статусу 200
-    def test_update_info_about_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("department-detail", args = [self.department.id])
+
+class ManagerDepartmentViewSetTests(BaseSetUp):
+    
+    def test_assign_manager_department_by_support_is_failure(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
         data = {
-            "name": "Отдел программистов"
+            "manager": self.support.id,
+            "assistant_manager": self.developer.id, #Department differs from assigned
+            "department": self.support_department.id
         }
-        response = self.client.patch(url, data, format="json")
-        self.department.refresh_from_db()
-        print(self.department.name)
+        url = reverse("manager-list")
+        response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_create_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
+    def test_assign_manager_department_by_support_succesfully(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
         data = {
-            "name": "Отдел ошибочного тестирования",
-        
+            "manager": self.developer.id,
+            "assistant_manager": self.second_developer.id,
+            "department": self.developer_department.id
         }
-        url = reverse("department-list")
+        url = reverse("manager-list")
         response = self.client.post(url, data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-    def test_delete_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("department-detail", args = [self.department.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    def test_assign_manager_department_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_security_token, self.access_hr_token]
+        data = {
+            "manager": self.support.id,
+            "assistant_manager": self.second_support.id,
+            "department": self.support_department.id
+        }
+        url = reverse("manager-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.post(url, data, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_get_list_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("department-list")
-        response = self.client.get(url)
+    def test_get_queryset(self):
+        tokens = [self.access_develop_token, self.access_hr_token, self.access_security_token, self.access_support_token]
+        url = reverse("manager-list")
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_manager_department_info_by_support_successfully(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
+        data = {
+            "manager": self.second_support.id,
+            "assistant_manager": self.support.id, 
+            "department": self.support_department.id
+        }
+        url = reverse("manager-detail", args=[self.manager_support_department.id])
+        response = self.client.patch(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_update_info_about_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("department-detail", args=[self.department.id])
+    def test_update_manager_department_info_by_support_failure(self):
+        self.client.credentials(HTTP_AUTHORIZATION = "Bearer " + self.access_support_token)
         data = {
-            "name": "Финансовый отдел"
+            "manager": self.second_support.id,
+            "assistant_manager": self.developer.id, 
+            "department": self.support_department.id
         }
+        url = reverse("manager-detail", args=[self.manager_support_department.id])
         response = self.client.patch(url, data, format="json")
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-
-class ManagerDepartmentViewSetTests(APITestCase):
-    def setUp(self):
-        self.support_department = Department.objects.create(
-            name = "Отдел технической поддержки",
-        )
-
-        self.department = Department.objects.create(
-            name = "Отдел разработки",
-        )
-
-        self.support_employee = Employee.objects.create(
-            login =  "support_user",
-            password = "strongpassword123",
-            first_name = "Саппорт",
-            last_name = "Саппорт",
-            surname = "Саппорт",
-            email =  "support@example.com",
-            department = self.support_department,
-            role = "Саппорт",
-            status = "Работает"
-            )
-        
-        self.employee = Employee.objects.create(
-            login = "default_user",
-            password = "strongpassword123",
-            first_name = "Разраб",
-            last_name = "Разраб",
-            surname = "Разраб",
-            email =  "developer@example.com",
-            department = self.department,
-            role = "Разработчик",
-            status = "Работает"
-        )
-
-        self.manager = Employee.objects.create(
-            login = "manager_user",
-            password = "strongpassword123",
-            first_name = "Менеджер",
-            last_name = "Менеджер",
-            surname = "Менеджер",
-            email =  "manager@example.com",
-            department = self.department,
-            role = "Менеджер",
-            status = "Работает"
-        )
-
-        self.assistant_manager = Employee.objects.create(
-            login = "assistant_manager_user",
-            password = "strongpassword123",
-            first_name = "Заместитель Менеджера",
-            last_name = "Заместитель Менеджера",
-            surname = "Заместитель Менеджера",
-            email =  "manager@example.com",
-            department = self.department,
-            role = "Заместитель Менеджера",
-            status = "Работает"
-        )
-
-        self.manager_department = ManagerDepartment.objects.create(
-            manager = self.manager,
-            assistant_manager = self.assistant_manager,
-            department = self.department
-        )
-
-        support_tokens = AuthService.generate_tokens(self.support_employee)
-        develop_tokens = AuthService.generate_tokens(self.employee)
-        manager_tokens = AuthService.generate_tokens(self.manager)
-        assistant_manager_tokens = AuthService.generate_tokens(self.assistant_manager)
-        self.access_develop_token = develop_tokens["access"]
-        self.access_support_token = support_tokens["access"]
-        self.access_manager_token = manager_tokens["access"]
-        self.access_assistant_manager_token = assistant_manager_tokens["access"]
-
-    #Сотрудник другого департамента не может быть назначен менеджером
-    def test_assign_employee_to_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("manager-list")
-        data = {
-            "manager": self.employee.id,
-            "assistant_manager": self.support_employee.id,
-            "department": self.support_department.id,
-        }
-        response = self.client.post(url, data, format="json")
-        self.manager_department.refresh_from_db()
-        print(self.manager_department)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_update_information_about_manager_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("manager-detail", args=[self.manager_department.id])
+    def test_delete_manager_department_info_by_other_departments(self):
+        tokens = [self.access_develop_token, self.access_hr_token, self.access_security_token]
         data = {
-            "manager": self.employee.id,
-            "department": self.department.id
+            "manager": self.second_support.id,
+            "assistant_manager": self.support.id, 
+            "department": self.support_department.id
         }
-        response = self.client.patch(url, data, format="json")
-        self.manager_department.refresh_from_db()
-        print(self.manager_department)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        url = reverse("manager-detail", args=[self.manager_support_department.id])
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.patch(url, data, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_get_info_about_executor_tasks_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("manager-get-info-about-executors", args=[self.manager_department.id])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    def test_get_list_info_about_department_employees_by_manager_or_assistant(self):
+        tokens = [self.access_second_support_token, self.access_second_support_token]
+        url = reverse("manager-get-info-about-executors", args=[self.manager_support_department.id])
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.get(url)
+            data = response.json()
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(len(data), Employee.objects.filter(department=self.support_department).count())
+            
+    def test_get_list_info_about_department_employees_by_not_a_manager_or_assistant(self):
+        tokens = [self.access_security_token, self.access_develop_token, self.access_hr_token]
+        url = reverse("manager-get-info-about-executors", args=[self.manager_support_department.id])
+        for token in tokens:
+            self.client.credentials(HTTP_AUTHORIZATION = f"Bearer {token}")
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_delete_note_about_manager_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("manager-detail", args=[self.manager_department.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_get_list_manager_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_support_token)
-        url = reverse("manager-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_assign_employee_to_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("manager-list")
-        data = {
-            "manager": self.employee.id,
-            "assistant_manager": self.support_employee.id,
-            "department": self.support_department.id,
-        }
-        response = self.client.post(url, data, format="json")
-        self.manager_department.refresh_from_db()
-        print(self.manager_department)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_update_information_about_manager_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("manager-detail", args=[self.manager_department.id])
-        data = {
-            "manager": self.employee.id,
-            "department": self.department.id
-        }
-        response = self.client.patch(url, data, format="json")
-        self.manager_department.refresh_from_db()
-        print(self.manager_department)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_get_info_about_executor_tasks_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("manager-get-info-about-executors", args=[self.manager_department.id])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_delete_note_about_manager_department_by_support(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("manager-detail", args=[self.manager_department.id])
-        response = self.client.delete(url)
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_get_list_manager_department_by_developer(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_develop_token)
-        url = reverse("manager-list")
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_get_info_about_executor_tasks_department_by_manager(self):
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_manager_token)
-        url = reverse("manager-get-info-about-executors", args=[self.manager_department.id])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_get_info_about_executor_tasks_department_by_assistant_manager(self):
-
-
-        self.client.credentials(HTTP_AUTHORIZATION = 'Bearer ' + self.access_assistant_manager_token)
-        url = reverse("manager-get-info-about-executors", args=[self.manager_department.id])
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
+    

@@ -3,12 +3,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
+from core.user_middleware import set_current_user
 
 from users.services.auth_service import AuthService
-from users.models import Employee, Department, ManagerDepartment
+from users.services.user_service import UserService
+from users.models import Department, ManagerDepartment, EmployeeActionHistory
 from users.services.manager_service import ManagerDepartmentService
-from users.permissions import IsManagerOfDepartmentPermission, IsSupportPermission, IsSupportOrOwnerPermission
-from users.serializers import UserSerializer, DepartmentSerializer, ManagerDepartmentSerializer, LoginSerializer
+from users.permissions import IsManagerOfDepartmentPermission, IsSupportPermission, IsSupportOrOwnerPermission, IsSecurityPermission
+from users.serializers import UserSerializer, DepartmentSerializer, ManagerDepartmentSerializer, LoginSerializer, EmployeeActionHistorySerializer
 
 import logging
 
@@ -16,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
-    queryset = Employee.objects.all()
     serializer_class = UserSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -25,6 +26,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         Обновление данных имеет возможность сам сотрудник и тех.поддержка
         Получить список всех сотрудников только тех.поддержка
     """
+    def initial(self, request, *args, **kwargs):
+        set_current_user(request.user)
+        return super().initial(request, *args, **kwargs)
+    
+    def get_queryset(self):
+        return UserService.get_queryset(self.request.user)
+
     def get_permissions(self):
         if self.action in ['create', 'destroy']:
             logger.info(f"Пользователь {self.request.user} пытается выполнить действие {self.action}")
@@ -32,9 +40,6 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         if self.action in ['update', 'partial_update']:
             logger.info(f"Пользователь {self.request.user} пытается обновить данные сотрудника")
             return [IsSupportOrOwnerPermission()]
-        if self.action == 'list':
-            logger.info(f"Пользователь {self.request.user} пытается получить список всех сотрудников")
-            return [IsSupportPermission()]
         return super().get_permissions()
     
 
@@ -94,22 +99,6 @@ class ManagerDepartmentViewSet(viewsets.ModelViewSet):
             return [IsSupportPermission()]
         return super().get_permissions()
 
-    def create(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        manager_department = serializer.save()
-        logger.info(f"Менеджер {manager_department.manager} назначен руководителем департамента {manager_department.department}")
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        updated_instance = serializer.save()
-        logger.info(f"Назначен новый менеджер для департамента {updated_instance.department}. Теперь его возглавляет {updated_instance.manager}")
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
     "Получение списка всех сотрудников департамента и списка актуальных задач для них доступно руководителю"
     @action(methods = ['get'], detail = True, url_path = 'executors-tasks', permission_classes = (IsManagerOfDepartmentPermission,))
     def get_info_about_executors(self, request, pk = None):
@@ -122,3 +111,10 @@ class ManagerDepartmentViewSet(viewsets.ModelViewSet):
         executors_data = ManagerDepartmentService.get_info_about_employee_tasks(manager_department.department)
         logger.info(f"Пользователь {request.user} запросил информацию о сотрудниках и задачах департамента {manager_department.department}")
         return Response(executors_data, status = status.HTTP_200_OK)
+
+
+class EmployeeActionHistoryViewSet(viewsets.ModelViewSet):
+    queryset = EmployeeActionHistory.objects.all()
+    serializer_class = EmployeeActionHistorySerializer
+    permission_classes = (IsSecurityPermission, )
+    http_method_names = ['get']

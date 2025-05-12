@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 # Register your models here.
-from users.models import Employee, Department, ManagerDepartment
+from users.models import Employee, Department, ManagerDepartment, EmployeeActionHistory
 
 admin.site.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
@@ -20,3 +20,4 @@ class EmployeeAdmin(admin.ModelAdmin):
     
 admin.site.register(Department)
 admin.site.register(ManagerDepartment)
+admin.site.register(EmployeeActionHistory)

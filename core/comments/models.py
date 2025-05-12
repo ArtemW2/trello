@@ -46,11 +46,6 @@ class Comment(models.Model):
         return f"комментарий №{self.id} к задаче {self.task.id}: {shortened}"
     
 
-    #Если нужно запретить и в админке
-    # def clean(self):
-    #     super().clean()
-    #     if self.parent_comment and self.task_id != self.parent_comment.task_id:
-    #         raise ValidationError("Нельзя оставить ответ на комментарий к другой задаче")
 
 
 
